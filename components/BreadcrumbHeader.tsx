@@ -1,0 +1,26 @@
+import React from "react"
+import {
+  Breadcrumb,
+  BreadcrumbItem,
+  BreadcrumbLink,
+  BreadcrumbList,
+  BreadcrumbPage,
+  BreadcrumbSeparator,
+} from "@/components/ui/breadcrumb"
+
+export function BreadcrumbHeader({ paths }: { paths: { label: string, href: string }[] }) {
+  return (
+    <Breadcrumb className="mb-6">
+      <BreadcrumbList>
+        {paths.map((path, index) => (
+          <React.Fragment key={path.href}>
+            <BreadcrumbItem>
+              <BreadcrumbLink href={path.href}>{path.label}</BreadcrumbLink>
+            </BreadcrumbItem>
+            {index < paths.length - 1 && <BreadcrumbSeparator />}
+          </React.Fragment>
+        ))}
+      </BreadcrumbList>
+    </Breadcrumb>
+  )
+}

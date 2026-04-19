@@ -1,6 +1,11 @@
 'use client';
 
+import { useSession, signOut } from 'next-auth/react';
+import { Combobox } from '@/components/ui/combobox';
+import { fetchGraphQL } from '@/lib/api';
 import React, { useState, useEffect, useMemo } from 'react';
+import { CREATE_SERVICE_ORDER_MUTATION, SERVICE_ORDERS_QUERY, REMOVE_SERVICE_ORDER_MUTATION, COMPLETE_SERVICE_ORDER_MUTATION, MACHINE_QUERY, UPDATE_SERVICE_ORDER_MUTATION
+} from '@/graphql/service-order.queries';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -43,16 +48,14 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog';
-import { graphqlRequest } from '@/hooks/use-graphql';
 import { useExportServiceOrders } from '@/hooks/use-export-service-orders';
-import { BreadcrumbHeader } from '@/components/BreadcrumbHeader/BreadcrumbHeader';
-import { useSession, signOut } from 'next-auth/react';
-import { Combobox } from '@/components/Combobox';
+import { BreadcrumbHeader } from '@/components/BreadcrumbHeader';
 
 interface ServiceOrderData {
   machineId: string;
   reason: string;
   type: string;
+  priority: string;
   machineWasStoped: boolean;
   serviceDescription: string;
   servicePerformed: string;
@@ -65,6 +68,7 @@ interface ServiceOrder {
   id: string;
   reason: string;
   type: string;
+  priority?: string;
   machineWasStoped: boolean;
   serviceDescription: string;
   servicePerformed?: string;
@@ -84,62 +88,6 @@ interface ServiceOrder {
   };
 }
 
-
-
-const SERVICE_ORDERS_QUERY = `
-  query {
-    serviceOrders {
-      id
-      reason
-      type
-      machineWasStoped
-      serviceDescription
-      servicePerformed
-      createdAt
-      serviceInitDate
-      serviceEndDate
-      serviceOrderEndDate
-      serviceOrderLink
-      machine {
-        id
-        name
-        code
-        department {
-          id
-          name
-        }
-      }
-    }
-  }
-`;
-
-
-
-const CREATE_SERVICE_ORDER_MUTATION = `
-  mutation CreateServiceOrder($createServiceOrderInput: CreateServiceOrderInput!) {
-    createServiceOrder(createServiceOrderInput: $createServiceOrderInput) {
-      id
-      machine {
-        id
-        name
-        code
-      }
-      reason
-      type
-      machineWasStoped
-      serviceDescription
-      servicePerformed
-      createdAt
-      serviceInitDate
-      serviceEndDate
-      serviceOrderEndDate
-    }
-  }
-`;
-
-
-
-
 export default function OrdemServicoPage() {
   const { data: session } = useSession();
 
@@ -147,6 +95,7 @@ export default function OrdemServicoPage() {
     machineId: '',
     reason: '',
     type: '',
+    priority: '',
     machineWasStoped: false,
     serviceDescription: '',
     servicePerformed: '',
@@ -156,6 +105,8 @@ export default function OrdemServicoPage() {
   });
 
   const [serviceOrders, setServiceOrders] = useState<ServiceOrder[]>([]);
+  const [isLoadingOrders, setIsLoadingOrders] = useState(false);
+  const [ordersError, setOrdersError] = useState('');
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [selectedStatus, setSelectedStatus] = useState<string>('all');
@@ -166,6 +117,11 @@ export default function OrdemServicoPage() {
     serviceEndDate: '',
     serviceOrderLink: '',
   });
+
+  const [machines, setMachines] = useState<any[]>([]); 
+  const [showEditLinkModal, setShowEditLinkModal] = useState(false);
+  const [editLinkOrderId, setEditLinkOrderId] = useState('');
+  const [editLinkData, setEditLinkData] = useState({ serviceOrderLink: '' });
 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -198,6 +154,7 @@ export default function OrdemServicoPage() {
           machineId: orderData.machineId,
           reason: orderData.reason,
           type: orderData.type,
+          priority: orderData.priority,
           machineWasStoped: orderData.machineWasStoped,
           serviceDescription: orderData.serviceDescription,
         },
@@ -205,7 +162,7 @@ export default function OrdemServicoPage() {
 
       console.log(variables);
 
-      const response = await graphqlRequest(CREATE_SERVICE_ORDER_MUTATION, variables, session);
+      const response = await fetchGraphQL(CREATE_SERVICE_ORDER_MUTATION, variables, session);
       console.log('Ordem de serviço criada:', response.createServiceOrder);
 
       // Limpar formulário
@@ -213,6 +170,7 @@ export default function OrdemServicoPage() {
         machineId: '',
         reason: '',
         type: '',
+        priority: '',
         machineWasStoped: false,
         serviceDescription: '',
         servicePerformed: '',
@@ -243,23 +201,26 @@ export default function OrdemServicoPage() {
   };
 
   const fetchServiceOrders = async () => {
-    if (!session) return;
+    setIsLoadingOrders(true);
+    setOrdersError('');
     try {
-      const response = await graphqlRequest(SERVICE_ORDERS_QUERY, {}, session);
+      const response = await fetchGraphQL(SERVICE_ORDERS_QUERY, {}, session);
       console.log('Ordens de serviço:', response);
       setServiceOrders(response.serviceOrders || []);
     } catch (error) {
       // await signOut({ callbackUrl: '/' });
       console.error('Erro ao buscar ordens de serviço:', error);
+      setOrdersError('Não foi possível carregar as ordens de serviço.');
+      setServiceOrders([]);
+    } finally {
+      setIsLoadingOrders(false);
     }
   };
 
   // Adicionar função para buscar máquinas
   const fetchMachines = async () => {
-    if (!session) return;
-
     try {
-      const response = await graphqlRequest(MACHINE_QUERY, {}, session);
+      const response = await fetchGraphQL(MACHINE_QUERY, {}, session);
       console.log('Máquinas:', response.machines);
       setMachines(response.machines || []);
     } catch (error) {
@@ -269,6 +230,7 @@ export default function OrdemServicoPage() {
   };
 
   useEffect(() => {
+    if (session === undefined) return;
     fetchServiceOrders();
     fetchMachines(); // Adicionar chamada para buscar máquinas
   }, [session]);
@@ -276,9 +238,9 @@ export default function OrdemServicoPage() {
   const filteredOrders = useMemo(() => {
     const filtered = serviceOrders.filter(order => {
       const matchesSearch =
-        order.machine.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.machine.code.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        order.reason.toLowerCase().includes(searchTerm.toLowerCase());
+        order.machine?.name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.machine?.code?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        order.reason?.toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchesType = selectedTypes.length === 0 || selectedTypes.includes(order.type);
 
@@ -332,7 +294,7 @@ export default function OrdemServicoPage() {
   const handleDeleteOrder = async (id: string) => {
     if (!session) return;
     try {
-      await graphqlRequest(REMOVE_SERVICE_ORDER_MUTATION, { id }, session);
+      await fetchGraphQL(REMOVE_SERVICE_ORDER_MUTATION, { id }, session);
       // Remove o item da lista local
       setServiceOrders(prev => prev.filter(order => order.id !== id));
       console.log('Ordem de serviço deletada com sucesso');
@@ -360,8 +322,8 @@ export default function OrdemServicoPage() {
     () =>
       (machines || []).map(m => ({
         value: m.id,
-        label: `${m.name} (${m.code})`,
-        keywords: [m.code, m.name],
+        label: `${m.name} (${m.identifier})`,
+        keywords: [m.identifier, m.name],
       })),
     [machines],
   );
@@ -396,7 +358,7 @@ export default function OrdemServicoPage() {
 
       console.log(completeServiceOrderInput);
 
-      await graphqlRequest(
+      await fetchGraphQL(
         COMPLETE_SERVICE_ORDER_MUTATION,
         {
           completeServiceOrderInput,
@@ -414,21 +376,31 @@ export default function OrdemServicoPage() {
     }
   };
 
-  const handleCompleteDataChange = (field: string, value: string) => {
+const handleCompleteDataChange = (field: string, value: string) => {
     setCompleteData(prev => ({
       ...prev,
       [field]: value,
     }));
   };
 
+  const handleEditLink = (id: string, currentLink: string) => {
+    setEditLinkOrderId(id);
+    setEditLinkData({ serviceOrderLink: currentLink });
+    setShowEditLinkModal(true);
+  };
 
+  const handleEditLinkSubmit = async () => {
+    if (!session) return;
+    try {
+      const updateServiceOrderInput = {
+        id: editLinkOrderId,
+        serviceOrderLink: editLinkData.serviceOrderLink,
+      };
 
-      await graphqlRequest(
+      await fetchGraphQL(
         UPDATE_SERVICE_ORDER_MUTATION,
-        {
-          updateServiceOrderInput,
-        },
-        session,
+        { updateServiceOrderInput },
+        session
       );
 
       setShowEditLinkModal(false);
@@ -438,7 +410,7 @@ export default function OrdemServicoPage() {
       alert('Link atualizado com sucesso!');
     } catch (error) {
       console.error('Erro ao atualizar link da ordem de serviço:', error);
-      alert('Erro ao atualizar link. Verifique sua conexão e tente novamente.');
+      alert('Erro ao atualizar link. Verifique sua conexão.');
     }
   };
 
@@ -508,7 +480,7 @@ export default function OrdemServicoPage() {
               </div>
 
               {/* Filtro por status */}
-              <div className="w-[200px] font-medium">
+              <div className="w-50 font-medium">
                 <Select value={selectedStatus} onValueChange={value => setSelectedStatus(value)}>
                   <SelectTrigger>
                     <SelectValue placeholder="Status" />
@@ -548,8 +520,8 @@ export default function OrdemServicoPage() {
                   <TableRow key={order.id}>
                     <TableCell>
                       <div>
-                        <div className="font-medium">{order.machine.name}</div>
-                        <div className="text-sm text-gray-500">{order.machine.code}</div>
+                        <div className="font-medium">{order.machine?.name || 'Sem máquina'}</div>
+                        <div className="text-sm text-gray-500">{order.machine?.code || '-'}</div>
                       </div>
                     </TableCell>
                     <TableCell>{getTypeBadge(order.type)}</TableCell>
@@ -561,7 +533,7 @@ export default function OrdemServicoPage() {
                     </TableCell>
                     <TableCell>{formatDate(order.createdAt)}</TableCell>
                     <TableCell>{formatDate(order.serviceOrderEndDate)}</TableCell>
-                    <TableCell>{order.machine.department.name}</TableCell>
+                    <TableCell>{order.machine?.department?.name || '-'}</TableCell>
                     <TableCell>
                       <div className="flex gap-2">
                         <Button
@@ -643,7 +615,21 @@ export default function OrdemServicoPage() {
                     </TableCell>
                   </TableRow>
                 ))}
-                {filteredOrders.length === 0 && (
+                {isLoadingOrders && (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                      Carregando ordens de serviço...
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!isLoadingOrders && ordersError && (
+                  <TableRow>
+                    <TableCell colSpan={8} className="text-center py-8 text-red-600">
+                      {ordersError}
+                    </TableCell>
+                  </TableRow>
+                )}
+                {!isLoadingOrders && !ordersError && filteredOrders.length === 0 && (
                   <TableRow>
                     <TableCell colSpan={8} className="text-center py-8 text-gray-500">
                       Nenhuma ordem de serviço encontrada
@@ -696,7 +682,7 @@ export default function OrdemServicoPage() {
                       </div>
                     </div>
 
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                       <div className="space-y-2">
                         <Label htmlFor="type">Tipo de Serviço *</Label>
                         <Select
@@ -710,6 +696,23 @@ export default function OrdemServicoPage() {
                             <SelectItem value="preventiva">Manutenção Preventiva</SelectItem>
                             <SelectItem value="corretiva">Manutenção Corretiva</SelectItem>
                             <SelectItem value="planejada">Manutenção Planejada</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label htmlFor="priority">Prioridade *</Label>
+                        <Select
+                          value={orderData.priority}
+                          onValueChange={value => handleSelectChange('priority', value)}
+                        >
+                          <SelectTrigger>
+                            <SelectValue placeholder="Selecione a prioridade" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="BAIXA">Baixa</SelectItem>
+                            <SelectItem value="MEDIA">Média</SelectItem>
+                            <SelectItem value="ALTA">Alta</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
@@ -756,7 +759,7 @@ export default function OrdemServicoPage() {
 
         {/* Modal de conclusão da ordem de serviço */}
         <Dialog open={showCompleteModal} onOpenChange={setShowCompleteModal}>
-          <DialogContent className="sm:max-w-[425px]">
+          <DialogContent className="sm:max-w-106.25">
             <DialogHeader>
               <DialogTitle>Concluir Ordem de Serviço</DialogTitle>
               <DialogDescription>
@@ -811,7 +814,7 @@ export default function OrdemServicoPage() {
 
         {/* Modal de edição do link da ordem de serviço */}
         <Dialog open={showEditLinkModal} onOpenChange={setShowEditLinkModal}>
-          <DialogContent className="sm:max-w-[425px]">
+          <DialogContent className="sm:max-w-106.25">
             <DialogHeader>
               <DialogTitle>Editar Link da Ordem de Serviço</DialogTitle>
               <DialogDescription>
