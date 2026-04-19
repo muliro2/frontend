@@ -1,6 +1,8 @@
 'use client';
 
+import Link from 'next/link';
 import { useSession, signOut } from 'next-auth/react';
+import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { Combobox } from '@/components/ui/combobox';
 import { fetchGraphQL } from '@/lib/api';
 import React, { useState, useEffect, useMemo } from 'react';
@@ -46,10 +48,10 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from '@/components/ui/dialog';
 import { useExportServiceOrders } from '@/hooks/use-export-service-orders';
 import { BreadcrumbHeader } from '@/components/BreadcrumbHeader';
+import { PageSizeSelect } from '@/components/PageSizeSelect';
 
 interface ServiceOrderData {
   machineId: string;
@@ -62,6 +64,13 @@ interface ServiceOrderData {
   serviceInitDate: string;
   serviceEndDate: string;
   serviceOrderEndDate: string;
+}
+
+interface Machine {
+  id: string;
+  name: string;
+  code?: string | null;
+  identifier?: string;
 }
 
 interface ServiceOrder {
@@ -90,6 +99,8 @@ interface ServiceOrder {
 
 export default function OrdemServicoPage() {
   const { data: session } = useSession();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
 
   const [orderData, setOrderData] = useState<ServiceOrderData>({
     machineId: '',
@@ -113,12 +124,14 @@ export default function OrdemServicoPage() {
   const [showForm, setShowForm] = useState(false);
   const [showCompleteModal, setShowCompleteModal] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string>('');
+  const [isCompletingOrder, setIsCompletingOrder] = useState(false);
+  const [isDeletingOrder, setIsDeletingOrder] = useState(false);
   const [completeData, setCompleteData] = useState({
     serviceEndDate: '',
     serviceOrderLink: '',
   });
 
-  const [machines, setMachines] = useState<any[]>([]); 
+  const [machines, setMachines] = useState<Machine[]>([]); 
   const [showEditLinkModal, setShowEditLinkModal] = useState(false);
   const [editLinkOrderId, setEditLinkOrderId] = useState('');
   const [editLinkData, setEditLinkData] = useState({ serviceOrderLink: '' });
@@ -231,8 +244,13 @@ export default function OrdemServicoPage() {
 
   useEffect(() => {
     if (session === undefined) return;
-    fetchServiceOrders();
-    fetchMachines(); // Adicionar chamada para buscar máquinas
+    
+    const loadData = async () => {
+      await fetchServiceOrders();
+      await fetchMachines();
+    };
+    
+    loadData();
   }, [session]);
 
   const filteredOrders = useMemo(() => {
@@ -256,6 +274,39 @@ export default function OrdemServicoPage() {
       (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime(),
     );
   }, [serviceOrders, searchTerm, selectedTypes, selectedStatus]);
+
+  const pageParam = searchParams?.get('page');
+  const pageSizeParam = searchParams?.get('pageSize');
+  const parsedPage = Number.parseInt(pageParam || '1', 10);
+  const parsedPageSize = Number.parseInt(pageSizeParam || '10', 10);
+  const allowedPageSizes = [10, 20, 50];
+  const PAGE_SIZE = allowedPageSizes.includes(parsedPageSize) ? parsedPageSize : 10;
+  const totalRows = filteredOrders.length;
+  const totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+  const currentPage = Number.isNaN(parsedPage)
+    ? 1
+    : Math.min(Math.max(parsedPage, 1), totalPages);
+  const startIndex = (currentPage - 1) * PAGE_SIZE;
+  const endIndex = startIndex + PAGE_SIZE;
+  const paginatedOrders = filteredOrders.slice(startIndex, endIndex);
+
+  const buildPageHref = (page: number) => {
+    const params = new URLSearchParams(searchParams?.toString());
+    if (page > 1) {
+      params.set('page', String(page));
+    } else {
+      params.delete('page');
+    }
+
+    if (PAGE_SIZE !== 10) {
+      params.set('pageSize', String(PAGE_SIZE));
+    } else {
+      params.delete('pageSize');
+    }
+
+    const query = params.toString();
+    return query ? `${pathname}?${query}` : pathname;
+  };
 
   const getStatusBadge = (order: ServiceOrder) => {
     if (order.serviceOrderEndDate) {
@@ -292,14 +343,23 @@ export default function OrdemServicoPage() {
   };
 
   const handleDeleteOrder = async (id: string) => {
-    if (!session) return;
+    if (!session || isDeletingOrder) return;
     try {
-      await fetchGraphQL(REMOVE_SERVICE_ORDER_MUTATION, { id }, session);
-      // Remove o item da lista local
+      setIsDeletingOrder(true);
+
+      const response = await fetchGraphQL(REMOVE_SERVICE_ORDER_MUTATION, { id }, session);
+
+      if (!response?.removeServiceOrder?.id) {
+        throw new Error('Não foi possível excluir a ordem de serviço.');
+      }
+
       setServiceOrders(prev => prev.filter(order => order.id !== id));
       console.log('Ordem de serviço deletada com sucesso');
     } catch (error) {
       console.error('Erro ao deletar ordem de serviço:', error);
+      alert('Erro ao deletar ordem de serviço. Tente novamente.');
+    } finally {
+      setIsDeletingOrder(false);
     }
   };
 
@@ -334,7 +394,12 @@ export default function OrdemServicoPage() {
   }, [machines, orderData.machineId]);
 
   const handleCompleteSubmit = async () => {
-    if (!session) return;
+    if (!session || isCompletingOrder) return;
+
+    if (!selectedOrderId) {
+      alert('Selecione uma ordem de serviço para concluir.');
+      return;
+    }
 
     console.log('Estado completeData:', completeData);
 
@@ -344,21 +409,25 @@ export default function OrdemServicoPage() {
     }
 
     try {
+      setIsCompletingOrder(true);
+
       // Para input type="date", o valor vem no formato YYYY-MM-DD
       // Converter para o padrão ISO 8601: 2024-01-15T14:30:00.000Z
       const dateValue = completeData.serviceEndDate + 'T12:00:00.000Z';
       const date = new Date(dateValue);
       const formattedDate = date.toISOString();
 
+      const serviceOrderLink = completeData.serviceOrderLink.trim();
+
       const completeServiceOrderInput = {
         id: selectedOrderId,
         serviceEndDate: formattedDate,
-        serviceOrderLink: completeData.serviceOrderLink,
+        serviceOrderLink: serviceOrderLink || undefined,
       };
 
       console.log(completeServiceOrderInput);
 
-      await fetchGraphQL(
+      const response = await fetchGraphQL(
         COMPLETE_SERVICE_ORDER_MUTATION,
         {
           completeServiceOrderInput,
@@ -366,13 +435,31 @@ export default function OrdemServicoPage() {
         session,
       );
 
+      if (!response?.completeServiceOrder?.id) {
+        throw new Error('Não foi possível concluir a ordem de serviço.');
+      }
+
+      setServiceOrders(prev =>
+        prev.map(order =>
+          order.id === selectedOrderId
+            ? {
+                ...order,
+                serviceEndDate: formattedDate,
+                serviceOrderEndDate: formattedDate,
+                serviceOrderLink: completeServiceOrderInput.serviceOrderLink,
+              }
+            : order,
+        ),
+      );
+
       setShowCompleteModal(false);
       setCompleteData({ serviceEndDate: '', serviceOrderLink: '' });
       setSelectedOrderId('');
-      fetchServiceOrders();
     } catch (error) {
       console.error('Erro ao concluir ordem de serviço:', error);
       alert('Erro ao concluir ordem de serviço. Tente novamente.');
+    } finally {
+      setIsCompletingOrder(false);
     }
   };
 
@@ -454,12 +541,12 @@ const handleCompleteDataChange = (field: string, value: string) => {
 
               {/* Filtros por tipo - Chips selecionáveis */}
               <div className="flex gap-2">
-                {['preventiva', 'corretiva', 'preditiva'].map(type => {
+                {['preventiva', 'corretiva', 'planejada'].map(type => {
                   const isSelected = selectedTypes.includes(type);
                   const typeLabels = {
                     preventiva: 'Preventiva',
                     corretiva: 'Corretiva',
-                    preditiva: 'Planejada',
+                    planejada: 'Planejada',
                   };
 
                   return (
@@ -499,7 +586,7 @@ const handleCompleteDataChange = (field: string, value: string) => {
         {/* Tabela de ordens de serviço */}
         <Card>
           <CardHeader>
-            <CardTitle>Lista de Ordens de Serviço ({filteredOrders.length})</CardTitle>
+            <CardTitle>Lista de Ordens de Serviço ({totalRows})</CardTitle>
           </CardHeader>
           <CardContent>
             <Table>
@@ -516,7 +603,7 @@ const handleCompleteDataChange = (field: string, value: string) => {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                {filteredOrders.map(order => (
+                {paginatedOrders.map(order => (
                   <TableRow key={order.id}>
                     <TableCell>
                       <div>
@@ -604,9 +691,12 @@ const handleCompleteDataChange = (field: string, value: string) => {
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => handleDeleteOrder(order.id)}>
-                                Deletar
+                              <AlertDialogCancel disabled={isDeletingOrder}>Cancelar</AlertDialogCancel>
+                              <AlertDialogAction
+                                onClick={() => handleDeleteOrder(order.id)}
+                                disabled={isDeletingOrder}
+                              >
+                                {isDeletingOrder ? 'Deletando...' : 'Deletar'}
                               </AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
@@ -638,6 +728,43 @@ const handleCompleteDataChange = (field: string, value: string) => {
                 )}
               </TableBody>
             </Table>
+            <div className="mt-4 flex items-center justify-between text-sm text-muted-foreground">
+              <p>
+                Mostrando {totalRows === 0 ? 0 : startIndex + 1} a {Math.min(endIndex, totalRows)} de {totalRows} registro(s)
+              </p>
+              <div className="flex items-center gap-6">
+                <div className="flex items-center gap-2">
+                  <span>Linhas por página</span>
+                  <PageSizeSelect value={PAGE_SIZE} />
+                </div>
+                <p>Página {currentPage} de {totalPages}</p>
+                <div className="flex items-center gap-2">
+                  {currentPage > 1 ? (
+                    <Link href={buildPageHref(currentPage - 1)}>
+                      <Button variant="outline" size="sm" type="button">
+                        Anterior
+                      </Button>
+                    </Link>
+                  ) : (
+                    <Button variant="outline" size="sm" type="button" disabled>
+                      Anterior
+                    </Button>
+                  )}
+
+                  {currentPage < totalPages ? (
+                    <Link href={buildPageHref(currentPage + 1)}>
+                      <Button variant="outline" size="sm" type="button">
+                        Próxima
+                      </Button>
+                    </Link>
+                  ) : (
+                    <Button variant="outline" size="sm" type="button" disabled>
+                      Próxima
+                    </Button>
+                  )}
+                </div>
+              </div>
+            </div>
           </CardContent>
         </Card>
 
@@ -758,7 +885,13 @@ const handleCompleteDataChange = (field: string, value: string) => {
         )}
 
         {/* Modal de conclusão da ordem de serviço */}
-        <Dialog open={showCompleteModal} onOpenChange={setShowCompleteModal}>
+        <Dialog
+          open={showCompleteModal}
+          onOpenChange={open => {
+            if (isCompletingOrder) return;
+            setShowCompleteModal(open);
+          }}
+        >
           <DialogContent className="sm:max-w-106.25">
             <DialogHeader>
               <DialogTitle>Concluir Ordem de Serviço</DialogTitle>
@@ -797,17 +930,21 @@ const handleCompleteDataChange = (field: string, value: string) => {
             <DialogFooter>
               <Button
                 variant="outline"
+                disabled={isCompletingOrder}
                 onClick={() => {
                   setShowCompleteModal(false);
                   setCompleteData({
                     serviceEndDate: '',
                     serviceOrderLink: '',
                   });
+                  setSelectedOrderId('');
                 }}
               >
                 Cancelar
               </Button>
-              <Button onClick={handleCompleteSubmit}>Concluir</Button>
+              <Button onClick={handleCompleteSubmit} disabled={isCompletingOrder}>
+                {isCompletingOrder ? 'Concluindo...' : 'Concluir'}
+              </Button>
             </DialogFooter>
           </DialogContent>
         </Dialog>

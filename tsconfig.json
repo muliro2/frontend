@@ -7,6 +7,7 @@
       "esnext"
     ],
     "allowJs": true,
+    "allowSyntheticDefaultImports": true,
     "skipLibCheck": true,
     "strict": true,
     "noEmit": true,
@@ -17,6 +18,8 @@
     "isolatedModules": true,
     "jsx": "preserve",
     "incremental": true,
+    "ignoreDeprecations": "6.0",
+    "baseUrl": ".",
     "plugins": [
       {
         "name": "next"
@@ -24,8 +27,8 @@
     ],
     "paths": {
       "@/*": [
-        "./*",
-        "./src/*"
+        "src/*",
+        "*"
       ]
     }
   },

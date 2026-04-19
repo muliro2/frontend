@@ -6,7 +6,14 @@
  * @param variables - Objeto com as variáveis do GraphQL
  * @param session - A sessão do Next-Auth (opcional)
  */
-export async function fetchGraphQL(query: string, variables = {}, session?: any) {
+export async function fetchGraphQL(
+  query: string,
+  variables: Record<string, unknown> = {},
+  session?: {
+    accessToken?: string;
+    user?: Record<string, unknown>;
+  } | null
+) {
   const GRAPHQL_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/graphql';
   
   // Pegamos o token da sessão. 

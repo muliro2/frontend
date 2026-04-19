@@ -41,8 +41,10 @@ export function Combobox({
 
   // Sincroniza o valor interno se o defaultValue mudar externamente
   React.useEffect(() => {
-    if (defaultValue) setValue(defaultValue);
-  }, [defaultValue]);
+    if (defaultValue) {
+      setValue(defaultValue);
+    }
+  }, [defaultValue, onChange]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>

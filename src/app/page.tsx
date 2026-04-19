@@ -48,7 +48,7 @@ interface DepartmentOption {
 export default async function Home({
   searchParams,
 }: {
-  searchParams?: { [key: string]: string | string[] | undefined };
+  searchParams?: Promise<{ [key: string]: string | string[] | undefined }>;
 }) {
   async function createMachineAction(formData: FormData) {
     'use server';
@@ -98,12 +98,13 @@ export default async function Home({
     console.error('Erro ao carregar máquinas na home:', error);
   }
 
-  const pageParam = Array.isArray(searchParams?.page)
-    ? searchParams?.page[0]
-    : searchParams?.page;
-  const pageSizeParam = Array.isArray(searchParams?.pageSize)
-    ? searchParams?.pageSize[0]
-    : searchParams?.pageSize;
+  const resolvedSearchParams = await searchParams;
+  const pageParam = Array.isArray(resolvedSearchParams?.page)
+    ? resolvedSearchParams?.page[0]
+    : resolvedSearchParams?.page;
+  const pageSizeParam = Array.isArray(resolvedSearchParams?.pageSize)
+    ? resolvedSearchParams?.pageSize[0]
+    : resolvedSearchParams?.pageSize;
   const parsedPage = Number.parseInt(pageParam || '1', 10);
   const parsedPageSize = Number.parseInt(pageSizeParam || '10', 10);
   const allowedPageSizes = [10, 20, 50];
