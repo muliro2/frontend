@@ -343,7 +343,7 @@ export default function OrdemServicoPage() {
   };
 
   const handleDeleteOrder = async (id: string) => {
-    if (!session || isDeletingOrder) return;
+    if (isDeletingOrder) return;
     try {
       setIsDeletingOrder(true);
 
@@ -394,70 +394,73 @@ export default function OrdemServicoPage() {
   }, [machines, orderData.machineId]);
 
   const handleCompleteSubmit = async () => {
-    if (!session || isCompletingOrder) return;
+    console.log('Botão Concluir clicado!'); // Log de teste 1
+    console.log('isCompletingOrder:', isCompletingOrder);
+    console.log('session:', session); // Log de teste 1
+    if (isCompletingOrder) return;
+
+    //Não deu tempo imlementar sessão.
+    /*if (!session) {
+      alert("Sessão não encontrada! Tente recarregar a página.");
+      console.error("Erro: Session is null no handleCompleteSubmit");
+      return;
+    }*/
 
     if (!selectedOrderId) {
-      alert('Selecione uma ordem de serviço para concluir.');
+      console.error('ID da ordem não selecionado');
       return;
     }
 
-    console.log('Estado completeData:', completeData);
-
-    if (!completeData.serviceEndDate || completeData.serviceEndDate.trim() === '') {
+    // Validação segura da data
+    if (!completeData.serviceEndDate) {
       alert('Por favor, preencha a data de término do serviço.');
       return;
     }
 
     try {
       setIsCompletingOrder(true);
+      console.log('Iniciando processamento da conclusão...'); // Log de teste 2
 
-      // Para input type="date", o valor vem no formato YYYY-MM-DD
-      // Converter para o padrão ISO 8601: 2024-01-15T14:30:00.000Z
-      const dateValue = completeData.serviceEndDate + 'T12:00:00.000Z';
-      const date = new Date(dateValue);
+      // Correção do TRIM: verifica se existe antes de usar o trim
+      const serviceOrderLink = completeData.serviceOrderLink ? completeData.serviceOrderLink.trim() : undefined;
+
+      // Formatação da data para ISO
+      const date = new Date(completeData.serviceEndDate);
+      date.setHours(12, 0, 0, 0); // Ajuste para evitar problemas de fuso
       const formattedDate = date.toISOString();
 
-      const serviceOrderLink = completeData.serviceOrderLink.trim();
-
-      const completeServiceOrderInput = {
-        id: selectedOrderId,
-        serviceEndDate: formattedDate,
-        serviceOrderLink: serviceOrderLink || undefined,
+      const variables = {
+        completeServiceOrderInput: {
+          id: selectedOrderId,
+          serviceEndDate: formattedDate,
+          serviceOrderLink: serviceOrderLink,
+        },
       };
 
-      console.log(completeServiceOrderInput);
+      console.log('Enviando para o Backend:', variables); // Log de teste 3
 
       const response = await fetchGraphQL(
         COMPLETE_SERVICE_ORDER_MUTATION,
-        {
-          completeServiceOrderInput,
-        },
+        { completeServiceOrderInput: variables.completeServiceOrderInput },
         session,
       );
 
-      if (!response?.completeServiceOrder?.id) {
-        throw new Error('Não foi possível concluir a ordem de serviço.');
+      console.log('Resposta do Backend:', response); // Log de teste 4
+
+      if (response?.completeServiceOrder?.id) {
+        // Recarrega a lista para atualizar a tabela
+        await fetchServiceOrders();
+        
+        setShowCompleteModal(false);
+        setCompleteData({ serviceEndDate: '', serviceOrderLink: '' });
+        setSelectedOrderId('');
+        alert('Ordem de serviço concluída com sucesso!');
+      } else {
+        alert('Erro: O servidor não retornou a ordem concluída.');
       }
-
-      setServiceOrders(prev =>
-        prev.map(order =>
-          order.id === selectedOrderId
-            ? {
-                ...order,
-                serviceEndDate: formattedDate,
-                serviceOrderEndDate: formattedDate,
-                serviceOrderLink: completeServiceOrderInput.serviceOrderLink,
-              }
-            : order,
-        ),
-      );
-
-      setShowCompleteModal(false);
-      setCompleteData({ serviceEndDate: '', serviceOrderLink: '' });
-      setSelectedOrderId('');
     } catch (error) {
-      console.error('Erro ao concluir ordem de serviço:', error);
-      alert('Erro ao concluir ordem de serviço. Tente novamente.');
+      console.error('Erro fatal na função handleCompleteSubmit:', error);
+      alert('Ocorreu um erro interno ao processar a conclusão.');
     } finally {
       setIsCompletingOrder(false);
     }

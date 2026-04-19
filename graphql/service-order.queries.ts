@@ -78,6 +78,7 @@ export const COMPLETE_SERVICE_ORDER_MUTATION = `
   mutation CompleteServiceOrder($completeServiceOrderInput: CompleteServiceOrderInput!) {
     completeServiceOrder(completeServiceOrderInput: $completeServiceOrderInput) {
       id
+      serviceEndDate
       serviceOrderEndDate
       serviceOrderLink
     }
