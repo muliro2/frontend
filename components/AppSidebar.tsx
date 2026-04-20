@@ -13,6 +13,7 @@ import {
   Users,
   UserRound,
   Presentation,
+  AlertTriangle,
   Bell,
   Settings,
 } from 'lucide-react';
@@ -27,6 +28,7 @@ type NavItem = {
 const moduleItems: NavItem[] = [
   { label: 'Painel', href: '/', icon: LayoutGrid },
   { label: 'Mecânica e manutenção', href: '/', icon: Wrench },
+  { label: 'Incidentes', href: '/incidentes', icon: AlertTriangle },
   { label: 'Almoxarifado', href: '#', icon: Package },
   { label: 'Produção', href: '#', icon: Factory },
   { label: 'Comercial', href: '#', icon: Briefcase },
