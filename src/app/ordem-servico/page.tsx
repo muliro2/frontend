@@ -140,6 +140,9 @@ export default function OrdemServicoPage() {
   const [showEditLinkModal, setShowEditLinkModal] = useState(false);
   const [editLinkOrderId, setEditLinkOrderId] = useState('');
   const [editLinkData, setEditLinkData] = useState({ serviceOrderLink: '' });
+  const [machineFieldError, setMachineFieldError] = useState('');
+  const [typeFieldError, setTypeFieldError] = useState('');
+  const [priorityFieldError, setPriorityFieldError] = useState('');
 
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
@@ -155,6 +158,18 @@ export default function OrdemServicoPage() {
       ...prev,
       [name]: value,
     }));
+
+    if (name === 'machineId' && value.trim()) {
+      setMachineFieldError('');
+    }
+
+    if (name === 'type' && value.trim()) {
+      setTypeFieldError('');
+    }
+
+    if (name === 'priority' && value.trim()) {
+      setPriorityFieldError('');
+    }
   };
 
   const handleCheckboxChange = (name: string, checked: boolean) => {
@@ -166,6 +181,28 @@ export default function OrdemServicoPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    let hasErrors = false;
+
+    if (!orderData.machineId.trim()) {
+      setMachineFieldError('Selecione uma máquina antes de criar a ordem de serviço.');
+      hasErrors = true;
+    }
+
+    if (!orderData.type.trim()) {
+      setTypeFieldError('Selecione o tipo de serviço.');
+      hasErrors = true;
+    }
+
+    if (!orderData.priority.trim()) {
+      setPriorityFieldError('Selecione a prioridade.');
+      hasErrors = true;
+    }
+
+    if (hasErrors) {
+      return;
+    }
+
     try {
       const input = {
         machineId: orderData.machineId,
@@ -185,6 +222,9 @@ export default function OrdemServicoPage() {
         servicePerformed: '', serviceInitDate: '',
         serviceEndDate: '', serviceOrderEndDate: ''
       });
+      setMachineFieldError('');
+      setTypeFieldError('');
+      setPriorityFieldError('');
       setShowForm(false);
       fetchServiceOrders();
     } catch (error) {
@@ -304,6 +344,21 @@ export default function OrdemServicoPage() {
     return <Badge variant={typeInfo.variant}>{typeInfo.label}</Badge>;
   };
 
+  const getPriorityBadge = (priority?: string) => {
+    const priorityMap = {
+      BAIXA: { label: 'Baixa', variant: 'secondary' as const },
+      MEDIA: { label: 'Média', variant: 'outline' as const },
+      ALTA: { label: 'Alta', variant: 'destructive' as const },
+    };
+
+    const priorityInfo = priorityMap[priority as keyof typeof priorityMap] || {
+      label: priority || '-',
+      variant: 'outline' as const,
+    };
+
+    return <Badge variant={priorityInfo.variant}>{priorityInfo.label}</Badge>;
+  };
+
   const formatDate = (dateString?: string) => {
     if (!dateString) return '-';
     return new Date(dateString).toLocaleDateString('pt-BR', {
@@ -355,11 +410,6 @@ export default function OrdemServicoPage() {
       })),
     [machines],
   );
-
-  const selectedMachineDisplay = useMemo(() => {
-    const m = (machines || []).find(x => x.id === orderData.machineId);
-    return m ? `${m.name} (${m.code})` : '';
-  }, [machines, orderData.machineId]);
 
   const handleCompleteSubmit = async () => {
     if (isCompletingOrder || !selectedOrderId || !completeData.serviceEndDate) return;
@@ -520,6 +570,7 @@ const handleCompleteDataChange = (field: string, value: string) => {
                 <TableRow>
                   <TableHead>Equipamento</TableHead>
                   <TableHead>Tipo</TableHead>
+                  <TableHead>Prioridade</TableHead>
                   <TableHead>Status</TableHead>
                   <TableHead>Motivo</TableHead>
                   <TableHead>Início da Ocorrência</TableHead>
@@ -538,6 +589,7 @@ const handleCompleteDataChange = (field: string, value: string) => {
                       </div>
                     </TableCell>
                     <TableCell>{getTypeBadge(order.type)}</TableCell>
+                    <TableCell>{getPriorityBadge(order.priority)}</TableCell>
                     <TableCell>{getStatusBadge(order)}</TableCell>
                     <TableCell>
                       <div className="max-w-xs truncate" title={order.reason}>
@@ -633,21 +685,21 @@ const handleCompleteDataChange = (field: string, value: string) => {
                 ))}
                 {isLoadingOrders && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                       Carregando ordens de serviço...
                     </TableCell>
                   </TableRow>
                 )}
                 {!isLoadingOrders && ordersError && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-red-600">
+                    <TableCell colSpan={9} className="text-center py-8 text-red-600">
                       {ordersError}
                     </TableCell>
                   </TableRow>
                 )}
                 {!isLoadingOrders && !ordersError && filteredOrders.length === 0 && (
                   <TableRow>
-                    <TableCell colSpan={8} className="text-center py-8 text-gray-500">
+                    <TableCell colSpan={9} className="text-center py-8 text-gray-500">
                       Nenhuma ordem de serviço encontrada
                     </TableCell>
                   </TableRow>
@@ -716,10 +768,13 @@ const handleCompleteDataChange = (field: string, value: string) => {
                           title="Selecione a máquina"
                           placeholder="busque por nome ou código"
                           options={machinesOptions}
-                          defaultValue={selectedMachineDisplay}
+                          defaultValue={orderData.machineId}
                           onChange={val => handleSelectChange('machineId', val || '')}
                           className="w-full"
                         />
+                        {machineFieldError && (
+                          <p className="text-sm text-red-600">{machineFieldError}</p>
+                        )}
                       </div>
 
                       <div className="space-y-2">
@@ -751,6 +806,7 @@ const handleCompleteDataChange = (field: string, value: string) => {
                             <SelectItem value="planejada">Manutenção Planejada</SelectItem>
                           </SelectContent>
                         </Select>
+                        {typeFieldError && <p className="text-sm text-red-600">{typeFieldError}</p>}
                       </div>
 
                       <div className="space-y-2">
@@ -768,6 +824,9 @@ const handleCompleteDataChange = (field: string, value: string) => {
                             <SelectItem value="ALTA">Alta</SelectItem>
                           </SelectContent>
                         </Select>
+                        {priorityFieldError && (
+                          <p className="text-sm text-red-600">{priorityFieldError}</p>
+                        )}
                       </div>
 
                       <div className="space-y-2 flex items-center space-x-2">

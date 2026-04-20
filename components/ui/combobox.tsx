@@ -41,10 +41,8 @@ export function Combobox({
 
   // Sincroniza o valor interno se o defaultValue mudar externamente
   React.useEffect(() => {
-    if (defaultValue) {
-      setValue(defaultValue);
-    }
-  }, [defaultValue, onChange]);
+    setValue(defaultValue || "");
+  }, [defaultValue]);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -56,7 +54,7 @@ export function Combobox({
           className={cn("w-full justify-between", className)}
         >
           {/* Se houver um título e nenhum valor, mostra o título */}
-          {value ? options.find((opt) => opt.value === value)?.label : (title || placeholder)}
+          {value ? options.find((opt) => opt.value === value)?.label ?? value : (title || placeholder)}
           <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
         </Button>
       </PopoverTrigger>
@@ -70,8 +68,8 @@ export function Combobox({
                 <CommandItem
                   key={opt.value}
                   value={opt.value}
-                  onSelect={(currentValue) => {
-                    const newValue = currentValue === value ? "" : currentValue;
+                  onSelect={() => {
+                    const newValue = opt.value === value ? "" : opt.value;
                     setValue(newValue);
                     onChange(newValue); // Avisa o page.tsx que mudou
                     setOpen(false);

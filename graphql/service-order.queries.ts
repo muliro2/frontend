@@ -53,6 +53,7 @@ export const SERVICE_ORDERS_QUERY = `
       id
       reason
       type
+      priority
       machineWasStoped
       serviceDescription
       servicePerformed
