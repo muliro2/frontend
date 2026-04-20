@@ -18,13 +18,12 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover"
 
-// 1. Definimos uma interface que aceita tudo o que o seu page.tsx envia
 interface ComboboxProps {
   options: { value: string; label: string; keywords?: any[] }[];
   onChange: (value: string) => void;
   defaultValue?: string;
   placeholder?: string;
-  title?: string; // Aqui o erro do 'title' morre
+  title?: string;
   className?: string;
 }
 
@@ -39,7 +38,6 @@ export function Combobox({
   const [open, setOpen] = React.useState(false)
   const [value, setValue] = React.useState(defaultValue || "")
 
-  // Sincroniza o valor interno se o defaultValue mudar externamente
   React.useEffect(() => {
     setValue(defaultValue || "");
   }, [defaultValue]);
@@ -71,7 +69,7 @@ export function Combobox({
                   onSelect={() => {
                     const newValue = opt.value === value ? "" : opt.value;
                     setValue(newValue);
-                    onChange(newValue); // Avisa o page.tsx que mudou
+                    onChange(newValue);
                     setOpen(false);
                   }}
                 >

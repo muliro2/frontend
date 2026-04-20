@@ -215,7 +215,6 @@ export default function OrdemServicoPage() {
 
       await createServiceOrderAction(input, session);
       
-      // Limpar e fechar
       setOrderData({
         machineId: '', reason: '', type: '', priority: '',
         machineWasStoped: false, serviceDescription: '',
@@ -245,7 +244,6 @@ export default function OrdemServicoPage() {
     }
   };
 
-  // Adicionar função para buscar máquinas
   const fetchMachines = async () => {
     try {
       const data = await fetchMachinesAction(session);

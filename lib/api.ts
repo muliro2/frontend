@@ -14,15 +14,12 @@ export async function fetchGraphQL(
 ) {
   const GRAPHQL_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3000/graphql';
   
-  // Pegamos o token da sessão. 
-  // Nota: Ajuste 'accessToken' para o nome do campo que você configurou no NextAuth
   const token = session?.accessToken || session?.user?.accessToken;
 
   const headers: HeadersInit = {
     'Content-Type': 'application/json',
   };
 
-  // Se houver token, injetamos o Header de autorização
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   }
@@ -32,7 +29,6 @@ export async function fetchGraphQL(
       method: 'POST',
       headers,
       body: JSON.stringify({ query, variables }),
-      // No Next.js 15, o padrão é fazer cache. Para OS, queremos dados sempre novos.
       cache: 'no-store', 
     });
 
@@ -40,7 +36,6 @@ export async function fetchGraphQL(
 
     if (json.errors) {
       console.error('Erro retornado pelo GraphQL:', json.errors);
-      // Lança o erro para ser capturado pelo try/catch do seu componente
       throw new Error(json.errors[0]?.message || 'Erro na requisição GraphQL');
     }
 
