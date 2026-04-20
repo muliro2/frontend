@@ -19,7 +19,7 @@ import {
 } from "@/components/ui/popover"
 
 interface ComboboxProps {
-  options: { value: string; label: string; keywords?: any[] }[];
+  options: { value: string; label: string; keywords?: Array<string | null | undefined> }[];
   onChange: (value: string) => void;
   defaultValue?: string;
   placeholder?: string;
@@ -62,26 +62,33 @@ export function Combobox({
           <CommandList>
             <CommandEmpty>Nenhum resultado encontrado.</CommandEmpty>
             <CommandGroup>
-              {options.map((opt) => (
-                <CommandItem
-                  key={opt.value}
-                  value={opt.value}
-                  onSelect={() => {
-                    const newValue = opt.value === value ? "" : opt.value;
-                    setValue(newValue);
-                    onChange(newValue);
-                    setOpen(false);
-                  }}
-                >
-                  <Check
-                    className={cn(
-                      "mr-2 h-4 w-4",
-                      value === opt.value ? "opacity-100" : "opacity-0"
-                    )}
-                  />
-                  {opt.label}
-                </CommandItem>
-              ))}
+              {options.map((opt) => {
+                const normalizedKeywords = (opt.keywords || [])
+                  .map(keyword => (keyword ?? '').toString().trim())
+                  .filter(Boolean)
+
+                return (
+                  <CommandItem
+                    key={opt.value}
+                    value={opt.label}
+                    keywords={normalizedKeywords}
+                    onSelect={() => {
+                      const newValue = opt.value === value ? "" : opt.value;
+                      setValue(newValue);
+                      onChange(newValue);
+                      setOpen(false);
+                    }}
+                  >
+                    <Check
+                      className={cn(
+                        "mr-2 h-4 w-4",
+                        value === opt.value ? "opacity-100" : "opacity-0"
+                      )}
+                    />
+                    {opt.label}
+                  </CommandItem>
+                )
+              })}
             </CommandGroup>
           </CommandList>
         </Command>

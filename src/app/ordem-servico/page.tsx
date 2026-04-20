@@ -403,8 +403,8 @@ export default function OrdemServicoPage() {
     () =>
       (machines || []).map(m => ({
         value: m.id,
-        label: `${m.name} (${m.identifier})`,
-        keywords: [m.identifier, m.name],
+        label: `${m.name} (${m.code})`,
+        keywords: [m.code, m.name],
       })),
     [machines],
   );
