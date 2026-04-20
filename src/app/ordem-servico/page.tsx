@@ -1,13 +1,18 @@
 'use client';
 
 import Link from 'next/link';
-import { useSession, signOut } from 'next-auth/react';
-import { usePathname, useRouter, useSearchParams } from 'next/navigation';
+import { useSession } from 'next-auth/react';
+import { usePathname, useSearchParams } from 'next/navigation';
 import { Combobox } from '@/components/ui/combobox';
-import { fetchGraphQL } from '@/lib/api';
 import React, { useState, useEffect, useMemo } from 'react';
-import { CREATE_SERVICE_ORDER_MUTATION, SERVICE_ORDERS_QUERY, REMOVE_SERVICE_ORDER_MUTATION, COMPLETE_SERVICE_ORDER_MUTATION, MACHINE_QUERY, UPDATE_SERVICE_ORDER_MUTATION
-} from '@/graphql/service-order.queries';
+import {
+  fetchServiceOrdersAction, 
+  fetchMachinesAction, 
+  createServiceOrderAction, 
+  removeServiceOrderAction, 
+  completeServiceOrderAction,
+  updateServiceOrderLinkAction 
+} from '@/app/actions/ordem-servico/ordem-servico';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -159,57 +164,31 @@ export default function OrdemServicoPage() {
     }));
   };
 
-  const createServiceOrder = async () => {
-    if (!session) return;
-    try {
-      const variables = {
-        createServiceOrderInput: {
-          machineId: orderData.machineId,
-          reason: orderData.reason,
-          type: orderData.type,
-          priority: orderData.priority,
-          machineWasStoped: orderData.machineWasStoped,
-          serviceDescription: orderData.serviceDescription,
-        },
-      };
-
-      console.log(variables);
-
-      const response = await fetchGraphQL(CREATE_SERVICE_ORDER_MUTATION, variables, session);
-      console.log('Ordem de serviço criada:', response.createServiceOrder);
-
-      // Limpar formulário
-      setOrderData({
-        machineId: '',
-        reason: '',
-        type: '',
-        priority: '',
-        machineWasStoped: false,
-        serviceDescription: '',
-        servicePerformed: '',
-        serviceInitDate: '',
-        serviceEndDate: '',
-        serviceOrderEndDate: '',
-      });
-
-      // Recarregar lista
-      await fetchServiceOrders();
-
-      return response.createServiceOrder;
-    } catch (error) {
-      // await signOut({ callbackUrl: '/' });
-      console.error('Erro ao criar ordem de serviço:', error);
-      throw error;
-    }
-  };
-
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
-      await createServiceOrder();
+      const input = {
+        machineId: orderData.machineId,
+        reason: orderData.reason,
+        type: orderData.type,
+        priority: orderData.priority,
+        machineWasStoped: orderData.machineWasStoped,
+        serviceDescription: orderData.serviceDescription,
+      };
+
+      await createServiceOrderAction(input, session);
+      
+      // Limpar e fechar
+      setOrderData({
+        machineId: '', reason: '', type: '', priority: '',
+        machineWasStoped: false, serviceDescription: '',
+        servicePerformed: '', serviceInitDate: '',
+        serviceEndDate: '', serviceOrderEndDate: ''
+      });
       setShowForm(false);
+      fetchServiceOrders();
     } catch (error) {
-      console.error('Erro no envio do formulário:', error);
+      console.error('Erro ao criar OS:', error);
     }
   };
 
@@ -217,14 +196,10 @@ export default function OrdemServicoPage() {
     setIsLoadingOrders(true);
     setOrdersError('');
     try {
-      const response = await fetchGraphQL(SERVICE_ORDERS_QUERY, {}, session);
-      console.log('Ordens de serviço:', response);
-      setServiceOrders(response.serviceOrders || []);
+      const data = await fetchServiceOrdersAction(session);
+      setServiceOrders(data);
     } catch (error) {
-      // await signOut({ callbackUrl: '/' });
-      console.error('Erro ao buscar ordens de serviço:', error);
-      setOrdersError('Não foi possível carregar as ordens de serviço.');
-      setServiceOrders([]);
+      console.error('Erro ao buscar ordens:', error);
     } finally {
       setIsLoadingOrders(false);
     }
@@ -233,12 +208,10 @@ export default function OrdemServicoPage() {
   // Adicionar função para buscar máquinas
   const fetchMachines = async () => {
     try {
-      const response = await fetchGraphQL(MACHINE_QUERY, {}, session);
-      console.log('Máquinas:', response.machines);
-      setMachines(response.machines || []);
+      const data = await fetchMachinesAction(session);
+      setMachines(data);
     } catch (error) {
       console.error('Erro ao buscar máquinas:', error);
-      await signOut({ callbackUrl: '/' });
     }
   };
 
@@ -346,15 +319,10 @@ export default function OrdemServicoPage() {
     if (isDeletingOrder) return;
     try {
       setIsDeletingOrder(true);
-
-      const response = await fetchGraphQL(REMOVE_SERVICE_ORDER_MUTATION, { id }, session);
-
-      if (!response?.removeServiceOrder?.id) {
-        throw new Error('Não foi possível excluir a ordem de serviço.');
-      }
-
+      await removeServiceOrderAction(id, session);
       setServiceOrders(prev => prev.filter(order => order.id !== id));
-      console.log('Ordem de serviço deletada com sucesso');
+      
+      console.log('Ordem removida com sucesso');
     } catch (error) {
       console.error('Erro ao deletar ordem de serviço:', error);
       alert('Erro ao deletar ordem de serviço. Tente novamente.');
@@ -394,73 +362,31 @@ export default function OrdemServicoPage() {
   }, [machines, orderData.machineId]);
 
   const handleCompleteSubmit = async () => {
-    console.log('Botão Concluir clicado!'); // Log de teste 1
-    console.log('isCompletingOrder:', isCompletingOrder);
-    console.log('session:', session); // Log de teste 1
-    if (isCompletingOrder) return;
-
-    //Não deu tempo imlementar sessão.
-    /*if (!session) {
-      alert("Sessão não encontrada! Tente recarregar a página.");
-      console.error("Erro: Session is null no handleCompleteSubmit");
-      return;
-    }*/
-
-    if (!selectedOrderId) {
-      console.error('ID da ordem não selecionado');
-      return;
-    }
-
-    // Validação segura da data
-    if (!completeData.serviceEndDate) {
-      alert('Por favor, preencha a data de término do serviço.');
-      return;
-    }
+    if (isCompletingOrder || !selectedOrderId || !completeData.serviceEndDate) return;
 
     try {
       setIsCompletingOrder(true);
-      console.log('Iniciando processamento da conclusão...'); // Log de teste 2
-
-      // Correção do TRIM: verifica se existe antes de usar o trim
-      const serviceOrderLink = completeData.serviceOrderLink ? completeData.serviceOrderLink.trim() : undefined;
-
-      // Formatação da data para ISO
+      
       const date = new Date(completeData.serviceEndDate);
-      date.setHours(12, 0, 0, 0); // Ajuste para evitar problemas de fuso
-      const formattedDate = date.toISOString();
+      date.setHours(12, 0, 0, 0);
 
-      const variables = {
-        completeServiceOrderInput: {
-          id: selectedOrderId,
-          serviceEndDate: formattedDate,
-          serviceOrderLink: serviceOrderLink,
-        },
+      const input = {
+        id: selectedOrderId,
+        serviceEndDate: date.toISOString(),
+        serviceOrderLink: completeData.serviceOrderLink?.trim() || undefined,
       };
 
-      console.log('Enviando para o Backend:', variables); // Log de teste 3
+      const response = await completeServiceOrderAction(input, session);
 
-      const response = await fetchGraphQL(
-        COMPLETE_SERVICE_ORDER_MUTATION,
-        { completeServiceOrderInput: variables.completeServiceOrderInput },
-        session,
-      );
-
-      console.log('Resposta do Backend:', response); // Log de teste 4
-
-      if (response?.completeServiceOrder?.id) {
-        // Recarrega a lista para atualizar a tabela
+      if (response?.id) {
         await fetchServiceOrders();
-        
         setShowCompleteModal(false);
         setCompleteData({ serviceEndDate: '', serviceOrderLink: '' });
         setSelectedOrderId('');
         alert('Ordem de serviço concluída com sucesso!');
-      } else {
-        alert('Erro: O servidor não retornou a ordem concluída.');
       }
     } catch (error) {
-      console.error('Erro fatal na função handleCompleteSubmit:', error);
-      alert('Ocorreu um erro interno ao processar a conclusão.');
+      console.error('Erro ao concluir OS:', error);
     } finally {
       setIsCompletingOrder(false);
     }
@@ -482,16 +408,13 @@ const handleCompleteDataChange = (field: string, value: string) => {
   const handleEditLinkSubmit = async () => {
     if (!session) return;
     try {
-      const updateServiceOrderInput = {
-        id: editLinkOrderId,
-        serviceOrderLink: editLinkData.serviceOrderLink,
-      };
-
-      await fetchGraphQL(
-        UPDATE_SERVICE_ORDER_MUTATION,
-        { updateServiceOrderInput },
+      await updateServiceOrderLinkAction(
+        editLinkOrderId, 
+        editLinkData.serviceOrderLink, 
         session
       );
+
+      await fetchServiceOrders();
 
       setShowEditLinkModal(false);
       setEditLinkData({ serviceOrderLink: '' });

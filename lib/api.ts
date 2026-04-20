@@ -1,5 +1,3 @@
-// src/lib/api.ts
-
 /**
  * Utilitário para chamadas GraphQL
  * @param query - A string da mutation ou query
